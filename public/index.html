@@ -186,6 +186,14 @@
             <input type="checkbox" id="useAeronautics" checked />
             <label for="useAeronautics">Use Aeronautics compatibility</label>
           </div>
+          <div>
+            <label for="licensePreset">License preset</label>
+            <select id="licensePreset">
+              <option value="mit_arr" selected>MIT code + ARR assets</option>
+              <option value="arr_only">All Rights Reserved (code + assets)</option>
+              <option value="apache_ccby">Apache-2.0 code + CC-BY-4.0 assets</option>
+            </select>
+          </div>
           <div class="full">
             <label for="projectPath">Project path (optional, absolute)</label>
             <input id="projectPath" placeholder="Example: C:\\mods\\my-create-addon" />
@@ -251,6 +259,7 @@
         if (profile.modId) document.getElementById("modId").value = profile.modId;
         if (profile.basePackage || profile.pkg) document.getElementById("basePackage").value = profile.basePackage || profile.pkg;
         if (profile.loader) document.getElementById("loader").value = profile.loader;
+        if (profile.licensePreset) document.getElementById("licensePreset").value = profile.licensePreset;
         if (typeof profile.useCreate === "boolean") document.getElementById("useCreate").checked = profile.useCreate;
         if (typeof profile.useAeronautics === "boolean") document.getElementById("useAeronautics").checked = profile.useAeronautics;
         if (profile.minecraftVersion) document.getElementById("minecraftVersion").value = profile.minecraftVersion;
@@ -348,6 +357,7 @@
           loader: document.getElementById("loader").value,
           useCreate: document.getElementById("useCreate").checked,
           useAeronautics: document.getElementById("useAeronautics").checked,
+          licensePreset: document.getElementById("licensePreset").value,
           projectPath: document.getElementById("projectPath").value,
           dryRun: document.getElementById("dryRun").checked
         };
@@ -568,6 +578,7 @@
               loader: document.getElementById("loader").value,
               useCreate: document.getElementById("useCreate").checked,
               useAeronautics: document.getElementById("useAeronautics").checked,
+              licensePreset: document.getElementById("licensePreset").value,
               minecraftVersion: document.getElementById("minecraftVersion").value,
               neoForgeVersion: document.getElementById("neoForgeVersion").value,
               createVersion: document.getElementById("createVersion").value,
@@ -587,7 +598,7 @@
           applyProfileToForm(data.project);
           output.textContent =
             `Project created at:\n${data.projectPath}\n\n` +
-            `Loader: ${data.project.loader}\nUse Create: ${data.project.useCreate}\nUse Aeronautics: ${data.project.useAeronautics}`;
+            `Loader: ${data.project.loader}\nUse Create: ${data.project.useCreate}\nUse Aeronautics: ${data.project.useAeronautics}\nLicense preset: ${data.project.licensePreset}`;
           await refreshProjects();
           await refreshHistory();
           await loadSnapshots();
