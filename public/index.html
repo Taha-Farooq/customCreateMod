@@ -104,11 +104,32 @@
         display: flex;
         gap: 8px;
       }
+      .toolbar {
+        margin-bottom: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="card">
+        <div class="toolbar">
+          <label for="projectSelector">Project</label>
+          <select id="projectSelector">
+            <option value="">Current/Latest Project</option>
+          </select>
+          <button id="refreshProjectsBtn" type="button">Refresh Projects</button>
+          <button id="healthBtn" type="button">Health</button>
+          <button id="preflightBtn" type="button">Preflight</button>
+          <button id="cancelQueueBtn" type="button">Cancel Queued Ops</button>
+        </div>
+        <div class="toolbar">
+          <input id="newProjectPrompt" placeholder="New project prompt: e.g. fabric utility mod without create" />
+          <input id="newProjectPath" placeholder="Optional path for new project" />
+          <button id="createProjectBtn" type="button">Create Project</button>
+        </div>
         <h1>Create Addon Feature UI</h1>
         <p class="hint">
           Ask for a feature, implement it into a NeoForge project with optional Create Aeronautics integration.
@@ -147,6 +168,24 @@
             <label for="basePackage">Base package</label>
             <input id="basePackage" value="com.taha.customcreate" />
           </div>
+          <div>
+            <label for="loader">Loader</label>
+            <select id="loader">
+              <option value="neoforge" selected>NeoForge</option>
+              <option value="forge">Forge</option>
+              <option value="fabric">Fabric</option>
+              <option value="quilt">Quilt</option>
+              <option value="none">None/Plain Java</option>
+            </select>
+          </div>
+          <div class="check">
+            <input type="checkbox" id="useCreate" checked />
+            <label for="useCreate">Use Create</label>
+          </div>
+          <div class="check">
+            <input type="checkbox" id="useAeronautics" checked />
+            <label for="useAeronautics">Use Aeronautics compatibility</label>
+          </div>
           <div class="full">
             <label for="projectPath">Project path (optional, absolute)</label>
             <input id="projectPath" placeholder="Example: C:\\mods\\my-create-addon" />
@@ -167,6 +206,15 @@
           <input id="testCommand" placeholder="Optional test command (e.g. gradlew.bat compileJava)" />
           <button id="applySelectedBtn" type="button">Apply Selected with Testing</button>
           <button id="retryFailedBtn" type="button">Retry Failed Automatically</button>
+          <button id="loadSnapshotsBtn" type="button">Load Snapshots</button>
+        </div>
+        <div class="actions">
+          <select id="snapshotSelector">
+            <option value="">Select snapshot to restore</option>
+          </select>
+          <button id="restoreSnapshotBtn" type="button">Restore Snapshot</button>
+          <button id="exportStateBtn" type="button">Export State</button>
+          <button id="importStateBtn" type="button">Import State</button>
         </div>
         <div id="history" class="history">No feature history yet.</div>
       </div>
@@ -180,10 +228,51 @@
       const applySelectedBtn = document.getElementById("applySelectedBtn");
       const retryFailedBtn = document.getElementById("retryFailedBtn");
       const testCommandEl = document.getElementById("testCommand");
+      const projectSelectorEl = document.getElementById("projectSelector");
+      const refreshProjectsBtn = document.getElementById("refreshProjectsBtn");
+      const healthBtn = document.getElementById("healthBtn");
+      const preflightBtn = document.getElementById("preflightBtn");
+      const cancelQueueBtn = document.getElementById("cancelQueueBtn");
+      const createProjectBtn = document.getElementById("createProjectBtn");
+      const newProjectPromptEl = document.getElementById("newProjectPrompt");
+      const newProjectPathEl = document.getElementById("newProjectPath");
+      const loadSnapshotsBtn = document.getElementById("loadSnapshotsBtn");
+      const snapshotSelectorEl = document.getElementById("snapshotSelector");
+      const restoreSnapshotBtn = document.getElementById("restoreSnapshotBtn");
+      const exportStateBtn = document.getElementById("exportStateBtn");
+      const importStateBtn = document.getElementById("importStateBtn");
       let currentPlanId = null;
       let currentProjectKey = null;
       let currentChangeIds = [];
       let lastFailed = [];
+
+      function applyProfileToForm(profile) {
+        if (!profile) return;
+        if (profile.modId) document.getElementById("modId").value = profile.modId;
+        if (profile.basePackage || profile.pkg) document.getElementById("basePackage").value = profile.basePackage || profile.pkg;
+        if (profile.loader) document.getElementById("loader").value = profile.loader;
+        if (typeof profile.useCreate === "boolean") document.getElementById("useCreate").checked = profile.useCreate;
+        if (typeof profile.useAeronautics === "boolean") document.getElementById("useAeronautics").checked = profile.useAeronautics;
+        if (profile.minecraftVersion) document.getElementById("minecraftVersion").value = profile.minecraftVersion;
+        if (profile.neoForgeVersion) document.getElementById("neoForgeVersion").value = profile.neoForgeVersion;
+        if (profile.createVersion) document.getElementById("createVersion").value = profile.createVersion;
+        if (profile.aeronauticsModId) document.getElementById("aeronauticsModId").value = profile.aeronauticsModId;
+      }
+
+      async function loadProjectProfileByKey(projectKey) {
+        if (!projectKey) return;
+        try {
+          const res = await fetch(`/api/project-profile?projectKey=${encodeURIComponent(projectKey)}`);
+          const data = await res.json();
+          if (!res.ok) return;
+          applyProfileToForm(data.profile);
+          if (data.projectPath) {
+            document.getElementById("projectPath").value = data.projectPath;
+          }
+        } catch (_error) {
+          // ignore profile load failures
+        }
+      }
 
       async function refreshHistory() {
         try {
@@ -209,6 +298,40 @@
         }
       }
 
+      async function refreshProjects() {
+        try {
+          const res = await fetch("/api/projects");
+          const data = await res.json();
+          if (!res.ok || !data.projects) return;
+          const selected = currentProjectKey || projectSelectorEl.value;
+          projectSelectorEl.innerHTML = `<option value="">Current/Latest Project</option>` +
+            data.projects.map((p) => `<option value="${p.projectKey}">${p.projectPath}</option>`).join("");
+          if (selected) {
+            projectSelectorEl.value = selected;
+          }
+        } catch (_error) {
+          // ignore selector refresh failures
+        }
+      }
+
+      async function loadSnapshots() {
+        if (!currentProjectKey) {
+          snapshotSelectorEl.innerHTML = `<option value="">Select snapshot to restore</option>`;
+          return;
+        }
+        try {
+          const res = await fetch(`/api/snapshots?projectKey=${encodeURIComponent(currentProjectKey)}`);
+          const data = await res.json();
+          if (!res.ok) return;
+          const list = data.snapshots || [];
+          snapshotSelectorEl.innerHTML =
+            `<option value="">Select snapshot to restore</option>` +
+            list.map((s) => `<option value="${s.id}">${s.timestamp} - ${s.reason} (${s.id})</option>`).join("");
+        } catch (_error) {
+          // ignore snapshot load failures
+        }
+      }
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         output.textContent = "Running implementer...";
@@ -222,6 +345,9 @@
           aeronauticsModId: document.getElementById("aeronauticsModId").value,
           modId: document.getElementById("modId").value,
           basePackage: document.getElementById("basePackage").value,
+          loader: document.getElementById("loader").value,
+          useCreate: document.getElementById("useCreate").checked,
+          useAeronautics: document.getElementById("useAeronautics").checked,
           projectPath: document.getElementById("projectPath").value,
           dryRun: document.getElementById("dryRun").checked
         };
@@ -247,6 +373,9 @@
             `${data.dryRun ? "Dry run preview" : "Implemented"} at:\n${data.outputPath}\n\nFile changes:\n${filesText}${registryText}`;
           currentPlanId = data.planId || null;
           currentProjectKey = data.projectKey || null;
+          if (currentProjectKey) {
+            projectSelectorEl.value = currentProjectKey;
+          }
           currentChangeIds = [];
           const fileRows = (data.files || []).map((f, i) => {
             const id = `file_${i + 1}`;
@@ -276,6 +405,7 @@
             </div>
           `;
           await refreshHistory();
+          await refreshProjects();
         } catch (error) {
           output.textContent = `Request failed: ${error.message}`;
         }
@@ -357,7 +487,201 @@
         }
       });
 
+      projectSelectorEl.addEventListener("change", async () => {
+        const picked = projectSelectorEl.value || null;
+        currentProjectKey = picked;
+        currentPlanId = null;
+        lastFailed = [];
+        changesEl.textContent = "Generate once to select per-file changes.";
+        await loadProjectProfileByKey(currentProjectKey);
+        await refreshHistory();
+      });
+
+      refreshProjectsBtn.addEventListener("click", async () => {
+        await refreshProjects();
+        await refreshHistory();
+      });
+
+      healthBtn.addEventListener("click", async () => {
+        try {
+          const res = await fetch("/api/health");
+          const data = await res.json();
+          output.textContent =
+            `Server health: ${data.status}\n` +
+            `Plans: ${data.planCount}\nHistory: ${data.historyCount}\n` +
+            `Snapshots: ${data.snapshotCount}\nActive locks: ${data.activeLocks}\n` +
+            `Timestamp: ${data.timestamp}`;
+        } catch (error) {
+          output.textContent = `Health check failed: ${error.message}`;
+        }
+      });
+
+      preflightBtn.addEventListener("click", async () => {
+        try {
+          const res = await fetch("/api/preflight");
+          const data = await res.json();
+          const checks = (data.checks || [])
+            .map((c) => `- ${c.name}: ${c.ok ? "OK" : "FAIL"} (${c.detail})`)
+            .join("\n");
+          output.textContent =
+            `Preflight: ${data.ok ? "PASS" : "FAIL"}\n\n` +
+            `Checks:\n${checks}\n\n` +
+            `Next steps:\n- ${(data.nextSteps || []).join("\n- ")}`;
+        } catch (error) {
+          output.textContent = `Preflight failed: ${error.message}`;
+        }
+      });
+
+      cancelQueueBtn.addEventListener("click", async () => {
+        if (!currentProjectKey) {
+          output.textContent = "Select a project first.";
+          return;
+        }
+        try {
+          const res = await fetch("/api/cancel-queued", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectKey: currentProjectKey }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Cancel failed: ${data.error || "Unknown error"}`;
+            return;
+          }
+          output.textContent =
+            `Queued operations cancelled: ${data.cancelled}\n` +
+            `Project currently running: ${data.running}`;
+        } catch (error) {
+          output.textContent = `Cancel failed: ${error.message}`;
+        }
+      });
+
+      createProjectBtn.addEventListener("click", async () => {
+        output.textContent = "Creating project...";
+        try {
+          const res = await fetch("/api/create-project", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: newProjectPromptEl.value,
+              projectPath: newProjectPathEl.value,
+              loader: document.getElementById("loader").value,
+              useCreate: document.getElementById("useCreate").checked,
+              useAeronautics: document.getElementById("useAeronautics").checked,
+              minecraftVersion: document.getElementById("minecraftVersion").value,
+              neoForgeVersion: document.getElementById("neoForgeVersion").value,
+              createVersion: document.getElementById("createVersion").value,
+              aeronauticsModId: document.getElementById("aeronauticsModId").value,
+              basePackage: document.getElementById("basePackage").value,
+              modId: document.getElementById("modId").value
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Error: ${data.error || "Project creation failed"}`;
+            return;
+          }
+          currentProjectKey = data.projectKey;
+          projectSelectorEl.value = data.projectKey;
+          document.getElementById("projectPath").value = data.projectPath;
+          applyProfileToForm(data.project);
+          output.textContent =
+            `Project created at:\n${data.projectPath}\n\n` +
+            `Loader: ${data.project.loader}\nUse Create: ${data.project.useCreate}\nUse Aeronautics: ${data.project.useAeronautics}`;
+          await refreshProjects();
+          await refreshHistory();
+          await loadSnapshots();
+        } catch (error) {
+          output.textContent = `Create project failed: ${error.message}`;
+        }
+      });
+
+      loadSnapshotsBtn.addEventListener("click", async () => {
+        await loadSnapshots();
+        output.textContent = "Snapshots loaded.";
+      });
+
+      restoreSnapshotBtn.addEventListener("click", async () => {
+        const snapshotId = snapshotSelectorEl.value;
+        if (!currentProjectKey || !snapshotId) {
+          output.textContent = "Select a project and snapshot first.";
+          return;
+        }
+        try {
+          const res = await fetch("/api/restore-snapshot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectKey: currentProjectKey, snapshotId })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Restore failed: ${data.error || "Unknown error"}`;
+            return;
+          }
+          output.textContent = `Snapshot restored: ${data.restored}\nProject: ${data.projectPath}`;
+          await refreshHistory();
+          await loadSnapshots();
+        } catch (error) {
+          output.textContent = `Restore failed: ${error.message}`;
+        }
+      });
+
+      exportStateBtn.addEventListener("click", async () => {
+        try {
+          const query = currentProjectKey ? `?projectKey=${encodeURIComponent(currentProjectKey)}` : "";
+          const res = await fetch(`/api/export-state${query}`);
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Export failed: ${data.error || "Unknown error"}`;
+            return;
+          }
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `feature-ui-state-${Date.now()}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          output.textContent = "State exported.";
+        } catch (error) {
+          output.textContent = `Export failed: ${error.message}`;
+        }
+      });
+
+      importStateBtn.addEventListener("click", async () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/json";
+        input.onchange = async () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const res = await fetch("/api/import-state", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...parsed, mode: "merge" }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              output.textContent = `Import failed: ${data.error || "Unknown error"}`;
+              return;
+            }
+            output.textContent = "State imported (merge mode).";
+            await refreshProjects();
+            await refreshHistory();
+            await loadSnapshots();
+          } catch (error) {
+            output.textContent = `Import failed: ${error.message}`;
+          }
+        };
+        input.click();
+      });
+
+      refreshProjects();
       refreshHistory();
+      loadSnapshots();
     </script>
   </body>
 </html>

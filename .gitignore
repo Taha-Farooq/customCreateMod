@@ -1,0 +1,6 @@
+node_modules/
+generated-projects/
+history.json
+plans.json
+snapshots.json
+audit.log

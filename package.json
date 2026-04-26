@@ -5,7 +5,10 @@
   "description": "Local UI to request and scaffold Create addon features",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "ci:smoke": "node --check server.js",
+    "test:integration": "node --test tests/integration.test.js"
   },
   "dependencies": {
     "express": "^4.19.2"
