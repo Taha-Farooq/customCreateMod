@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create Addon Feature UI</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111827;
+        --card: #1f2937;
+        --accent: #60a5fa;
+        --text: #e5e7eb;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 32px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+      h1 { margin-top: 0; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .full { grid-column: 1 / -1; }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+      input, textarea {
+        width: 100%;
+        background: #0f172a;
+        color: var(--text);
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      textarea { min-height: 108px; resize: vertical; }
+      button {
+        margin-top: 12px;
+        background: var(--accent);
+        color: #0b1020;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .meta, .history {
+        margin-top: 16px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 12px;
+        white-space: pre-wrap;
+      }
+      .hint { color: #94a3b8; font-size: 13px; }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .check input {
+        width: auto;
+      }
+      .history-item {
+        border-bottom: 1px solid #1e293b;
+        padding: 8px 0;
+      }
+      .history-item:last-child {
+        border-bottom: 0;
+      }
+      .changes {
+        margin-top: 16px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .change-row {
+        border-bottom: 1px solid #1e293b;
+        padding: 8px 0;
+      }
+      .change-row:last-child {
+        border-bottom: 0;
+      }
+      .actions {
+        margin-top: 10px;
+        display: flex;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Create Addon Feature UI</h1>
+        <p class="hint">
+          Ask for a feature, implement it into a NeoForge project with optional Create Aeronautics integration.
+        </p>
+        <form id="featureForm" class="grid">
+          <div class="full">
+            <label for="featureTitle">Feature name</label>
+            <input id="featureTitle" required placeholder="Example: Airship Docking Bearing" />
+          </div>
+          <div class="full">
+            <label for="featureSummary">Feature request</label>
+            <textarea id="featureSummary" required placeholder="Describe behavior, crafting, and gameplay impact."></textarea>
+          </div>
+
+          <div>
+            <label for="minecraftVersion">Minecraft version</label>
+            <input id="minecraftVersion" value="1.20.1" />
+          </div>
+          <div>
+            <label for="neoForgeVersion">NeoForge version</label>
+            <input id="neoForgeVersion" value="20.6.130" />
+          </div>
+          <div>
+            <label for="createVersion">Create version</label>
+            <input id="createVersion" value="latest" />
+          </div>
+          <div>
+            <label for="aeronauticsModId">Aeronautics mod id</label>
+            <input id="aeronauticsModId" value="create_aeronautics" />
+          </div>
+          <div>
+            <label for="modId">Your mod id</label>
+            <input id="modId" value="customcreateaddon" />
+          </div>
+          <div>
+            <label for="basePackage">Base package</label>
+            <input id="basePackage" value="com.taha.customcreate" />
+          </div>
+          <div class="full">
+            <label for="projectPath">Project path (optional, absolute)</label>
+            <input id="projectPath" placeholder="Example: C:\\mods\\my-create-addon" />
+          </div>
+          <div class="full check">
+            <input type="checkbox" id="dryRun" />
+            <label for="dryRun">Dry run (preview diff, do not write files)</label>
+          </div>
+
+          <div class="full">
+            <button type="submit">Implement Feature</button>
+          </div>
+        </form>
+
+        <div id="output" class="meta">No generation run yet.</div>
+        <div id="changes" class="changes">Generate once to select per-file changes.</div>
+        <div class="actions">
+          <input id="testCommand" placeholder="Optional test command (e.g. gradlew.bat compileJava)" />
+          <button id="applySelectedBtn" type="button">Apply Selected with Testing</button>
+          <button id="retryFailedBtn" type="button">Retry Failed Automatically</button>
+        </div>
+        <div id="history" class="history">No feature history yet.</div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("featureForm");
+      const output = document.getElementById("output");
+      const historyEl = document.getElementById("history");
+      const changesEl = document.getElementById("changes");
+      const applySelectedBtn = document.getElementById("applySelectedBtn");
+      const retryFailedBtn = document.getElementById("retryFailedBtn");
+      const testCommandEl = document.getElementById("testCommand");
+      let currentPlanId = null;
+      let currentProjectKey = null;
+      let currentChangeIds = [];
+      let lastFailed = [];
+
+      async function refreshHistory() {
+        try {
+          const query = currentProjectKey ? `?projectKey=${encodeURIComponent(currentProjectKey)}` : "";
+          const res = await fetch(`/api/history${query}`);
+          const data = await res.json();
+          if (!res.ok || !data.history || data.history.length === 0) {
+            historyEl.textContent = "No feature history yet.";
+            return;
+          }
+          historyEl.innerHTML = data.history
+            .map((item) => `
+              <div class="history-item">
+                <strong>${item.featureTitle}</strong> (${item.dryRun ? "dry run" : "implemented"})<br />
+                <span>${item.timestamp}</span><br />
+                <span>${item.projectPath}</span><br />
+                <span>changes: ${item.changeCount}</span>
+              </div>
+            `)
+            .join("");
+        } catch (error) {
+          historyEl.textContent = `Could not load history: ${error.message}`;
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        output.textContent = "Running implementer...";
+
+        const payload = {
+          featureTitle: document.getElementById("featureTitle").value,
+          featureSummary: document.getElementById("featureSummary").value,
+          minecraftVersion: document.getElementById("minecraftVersion").value,
+          neoForgeVersion: document.getElementById("neoForgeVersion").value,
+          createVersion: document.getElementById("createVersion").value,
+          aeronauticsModId: document.getElementById("aeronauticsModId").value,
+          modId: document.getElementById("modId").value,
+          basePackage: document.getElementById("basePackage").value,
+          projectPath: document.getElementById("projectPath").value,
+          dryRun: document.getElementById("dryRun").checked
+        };
+
+        try {
+          const res = await fetch("/api/generate-feature", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Error: ${data.error || "Unknown error"}`;
+            return;
+          }
+          const filesText = data.files
+            .map((f) => `- [${f.action}] ${f.path}\n${f.preview}`)
+            .join("\n\n");
+          const registryText = data.registryChange
+            ? `\n\nRegistry:\n- [${data.registryChange.action}] ${data.registryChange.path}\n${data.registryChange.preview || ""}`
+            : "";
+          output.textContent =
+            `${data.dryRun ? "Dry run preview" : "Implemented"} at:\n${data.outputPath}\n\nFile changes:\n${filesText}${registryText}`;
+          currentPlanId = data.planId || null;
+          currentProjectKey = data.projectKey || null;
+          currentChangeIds = [];
+          const fileRows = (data.files || []).map((f, i) => {
+            const id = `file_${i + 1}`;
+            currentChangeIds.push(id);
+            return `
+              <div class="change-row">
+                <label>
+                  <input type="checkbox" data-change-id="${id}" checked />
+                  [${f.action}] ${f.path}
+                </label>
+                <div><pre>${(f.preview || "").replace(/</g, "&lt;")}</pre></div>
+              </div>
+            `;
+          }).join("");
+          const registryId = "registry_1";
+          currentChangeIds.push(registryId);
+          changesEl.innerHTML = `
+            <div><strong>Plan ID:</strong> ${currentPlanId || "n/a"}</div>
+            <div><strong>Project Key:</strong> ${currentProjectKey || "n/a"}</div>
+            ${fileRows}
+            <div class="change-row">
+              <label>
+                <input type="checkbox" data-change-id="${registryId}" checked />
+                [${data.registryChange?.action || "update"}] ${data.registryChange?.path || "FeatureRegistry.java"}
+              </label>
+              <div><pre>${(data.registryChange?.preview || "").replace(/</g, "&lt;")}</pre></div>
+            </div>
+          `;
+          await refreshHistory();
+        } catch (error) {
+          output.textContent = `Request failed: ${error.message}`;
+        }
+      });
+
+      applySelectedBtn.addEventListener("click", async () => {
+        if (!currentPlanId) {
+          output.textContent = "Generate a plan first.";
+          return;
+        }
+        const selected = Array.from(document.querySelectorAll("[data-change-id]:checked"))
+          .map((el) => el.getAttribute("data-change-id"));
+        if (selected.length === 0) {
+          output.textContent = "Select at least one change to apply.";
+          return;
+        }
+        output.textContent = "Applying selected changes with testing...";
+        try {
+          const res = await fetch("/api/apply-selected", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              planId: currentPlanId,
+              selectedIds: selected,
+              testCommand: testCommandEl.value,
+              projectKey: currentProjectKey
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Error: ${data.error || "Apply failed"}`;
+            return;
+          }
+          output.textContent =
+            `Apply result for ${data.projectPath}\n\n` +
+            `Applied: ${data.applied.length}\nFailed (rolled back): ${data.failed.length}\nSkipped: ${data.skipped.length}\n\n` +
+            `AI failure report:\n${data.aiReport}`;
+          lastFailed = data.failed || [];
+          await refreshHistory();
+        } catch (error) {
+          output.textContent = `Apply request failed: ${error.message}`;
+        }
+      });
+
+      retryFailedBtn.addEventListener("click", async () => {
+        if (!currentPlanId) {
+          output.textContent = "Generate and apply once before retrying failures.";
+          return;
+        }
+        if (!lastFailed || lastFailed.length === 0) {
+          output.textContent = "No failed files to retry.";
+          return;
+        }
+        output.textContent = "Retrying failed files with fallback patches...";
+        try {
+          const res = await fetch("/api/retry-failed", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              planId: currentPlanId,
+              failed: lastFailed,
+              testCommand: testCommandEl.value,
+              projectKey: currentProjectKey
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            output.textContent = `Error: ${data.error || "Retry failed"}`;
+            return;
+          }
+          output.textContent =
+            `Retry result for ${data.projectPath}\n\n` +
+            `Retried and fixed: ${data.retryApplied.length}\nStill failing: ${data.retryFailed.length}\nAborted (too complex): ${(data.retryAborted || []).length}\n\n` +
+            `AI retry report:\n${data.retryReport}`;
+          lastFailed = data.retryFailed || [];
+          await refreshHistory();
+        } catch (error) {
+          output.textContent = `Retry request failed: ${error.message}`;
+        }
+      });
+
+      refreshHistory();
+    </script>
+  </body>
+</html>

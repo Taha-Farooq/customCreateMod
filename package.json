@@ -1,0 +1,13 @@
+{
+  "name": "create-feature-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local UI to request and scaffold Create addon features",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
